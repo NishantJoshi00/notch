@@ -204,6 +204,27 @@ class NotchMind {
                 "type": "object",
                 "properties": [:] as [String: Any]
             ] as [String: Any]
+        ],
+        [
+            "name": "start_quest",
+            "description": "Spawn a side-quest — an autonomous Opus agent in an isolated VM that works toward a goal with bash, web search, and file tools. Use for deep research or multi-step investigation that would take 10+ tool calls. Costs ~$0.50. One at a time.",
+            "input_schema": [
+                "type": "object",
+                "properties": [
+                    "goal": ["type": "string", "description": "What the quest agent should accomplish"],
+                    "model": ["type": "string", "description": "Model to use (default: claude-opus-4-6)"],
+                    "timeout_minutes": ["type": "integer", "description": "Max runtime in minutes (default: 5)"]
+                ],
+                "required": ["goal"]
+            ] as [String: Any]
+        ],
+        [
+            "name": "check_quests",
+            "description": "Check on side-quests. Returns completed results and active quest status. Call this on heartbeat wakes to pick up finished work.",
+            "input_schema": [
+                "type": "object",
+                "properties": [:] as [String: Any]
+            ] as [String: Any]
         ]
     ]
 
@@ -311,6 +332,64 @@ class NotchMind {
                 resultsLock.lock()
                 toolResults.append((id: toolUse.id, result: [
                     "type": "tool_result", "tool_use_id": toolUse.id, "content": "OK, staying silent."
+                ]))
+                resultsLock.unlock()
+
+            case "start_quest":
+                let goal = toolUse.input["goal"] as? String ?? ""
+                let model = toolUse.input["model"] as? String ?? "claude-opus-4-6"
+                let timeout = toolUse.input["timeout_minutes"] as? Int ?? 5
+                let apiKey = appDelegate?.apiKey ?? ""
+
+                let spawnResult = QuestManager.shared.spawn(
+                    goal: goal, apiKey: apiKey, model: model, timeoutMinutes: timeout
+                )
+                let resultText: String
+                switch spawnResult {
+                case .success(let questId):
+                    resultText = "Quest started: \(questId). Goal: \(goal). It'll run in an isolated VM with Opus. Check back on your next heartbeat."
+                case .failure(let error):
+                    resultText = "Quest failed to start: \(error.description)"
+                }
+                resultsLock.lock()
+                toolResults.append((id: toolUse.id, result: [
+                    "type": "tool_result", "tool_use_id": toolUse.id, "content": resultText
+                ]))
+                resultsLock.unlock()
+
+            case "check_quests":
+                var parts: [String] = []
+
+                let completed = QuestManager.shared.harvest()
+                if completed.isEmpty {
+                    parts.append("No completed quests.")
+                } else {
+                    for quest in completed {
+                        parts.append("COMPLETED [\(quest.id)] \"\(quest.goal)\":\n\(quest.result)")
+                    }
+                }
+
+                let active = QuestManager.shared.list()
+                if active.isEmpty {
+                    parts.append("No active quests.")
+                } else {
+                    let formatter = DateComponentsFormatter()
+                    formatter.allowedUnits = [.minute, .second]
+                    formatter.unitsStyle = .abbreviated
+                    for quest in active {
+                        let elapsed = formatter.string(from: quest.startedAt, to: Date()) ?? "?"
+                        parts.append("ACTIVE [\(quest.id)] \"\(quest.goal)\" — running \(elapsed)")
+                    }
+                }
+
+                let questVMReady = QuestManager.shared.isVMReady
+                if !questVMReady {
+                    parts.append("(Quest VM not built yet — user needs to run scripts/build-quest-vm.sh)")
+                }
+
+                resultsLock.lock()
+                toolResults.append((id: toolUse.id, result: [
+                    "type": "tool_result", "tool_use_id": toolUse.id, "content": parts.joined(separator: "\n\n")
                 ]))
                 resultsLock.unlock()
 

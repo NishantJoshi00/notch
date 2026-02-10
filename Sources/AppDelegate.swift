@@ -135,6 +135,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Save session on quit
         SessionStorage.shared.save(messages: messages)
 
+        // Kill any running quests
+        QuestManager.shared.killAll()
+
         // Shut down the mind
         NotchScheduler.shared.stopCaringCycle()
         systemEventMonitor?.stop()
@@ -173,8 +176,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let menu = NSMenu()
+        menu.delegate = self
         menu.addItem(NSMenuItem(title: "Set API Key...", action: #selector(showAPIKeyDialog), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Clear Chat", action: #selector(clearChat), keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+
+        // Quest submenu
+        let questItem = NSMenuItem(title: "Active Quests", action: nil, keyEquivalent: "")
+        let questMenu = NSMenu()
+        questItem.submenu = questMenu
+        menu.addItem(questItem)
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit Notch", action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
@@ -716,5 +728,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func killQuest(_ sender: NSMenuItem) {
+        guard let questId = sender.representedObject as? String else { return }
+        QuestManager.shared.cancel(id: questId)
+    }
+}
+
+// MARK: - NSMenuDelegate (rebuild quest submenu dynamically)
+
+extension AppDelegate: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        // Find the quest submenu and rebuild it
+        guard let questItem = menu.items.first(where: { $0.title == "Active Quests" }),
+              let questMenu = questItem.submenu else { return }
+
+        questMenu.removeAllItems()
+
+        let active = QuestManager.shared.list()
+        if active.isEmpty {
+            let noQuests = NSMenuItem(title: "(no active quests)", action: nil, keyEquivalent: "")
+            noQuests.isEnabled = false
+            questMenu.addItem(noQuests)
+        } else {
+            let formatter = DateComponentsFormatter()
+            formatter.allowedUnits = [.minute, .second]
+            formatter.unitsStyle = .abbreviated
+
+            for quest in active {
+                let elapsed = formatter.string(from: quest.startedAt, to: Date()) ?? "?"
+                let goalPreview = quest.goal.prefix(40) + (quest.goal.count > 40 ? "..." : "")
+                let title = "\"\(goalPreview)\" — \(elapsed)"
+
+                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                questMenu.addItem(item)
+
+                let killItem = NSMenuItem(title: "  Kill", action: #selector(killQuest(_:)), keyEquivalent: "")
+                killItem.representedObject = quest.id
+                killItem.target = self
+                questMenu.addItem(killItem)
+            }
+        }
+
+        if !QuestManager.shared.isVMReady {
+            questMenu.addItem(NSMenuItem.separator())
+            let vmNote = NSMenuItem(title: "(VM not built — run scripts/build-quest-vm.sh)", action: nil, keyEquivalent: "")
+            vmNote.isEnabled = false
+            questMenu.addItem(vmNote)
+        }
     }
 }
