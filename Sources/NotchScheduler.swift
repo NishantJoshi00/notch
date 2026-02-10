@@ -170,8 +170,9 @@ class NotchScheduler {
         timer.schedule(deadline: .now() + interval)
         timer.setEventHandler { [weak self] in
             guard let self = self else { return }
+            let heartbeat = NotchCapability.heartbeat
             let thought = ScheduledThought(
-                content: "Periodic check-in. Consider the user's recent context and whether they might appreciate a thought, encouragement, or reminder.",
+                content: "Heartbeat wake. Work through your checklist:\n\(heartbeat)",
                 source: .caringCycle,
                 fireDate: Date()
             )

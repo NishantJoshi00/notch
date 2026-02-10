@@ -114,13 +114,71 @@ class NotchMind {
     private func memoryContext() -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let memoriesDir = home.appendingPathComponent(".notch/memories")
+        let maxChars = 2000
+        var parts: [String] = []
+        var totalChars = 0
 
-        // Read user memory file
+        // Helper to add content with budget
+        func addIfRoom(_ label: String, _ content: String) {
+            guard totalChars < maxChars else { return }
+            let available = maxChars - totalChars
+            let trimmed = content.count > available ? String(content.prefix(available)) + "..." : content
+            let section = "[\(label)]\n\(trimmed)"
+            parts.append(section)
+            totalChars += section.count
+        }
+
+        // 1. User file (highest priority)
         let userMemory = memoriesDir.appendingPathComponent("user")
         if let content = try? String(contentsOf: userMemory, encoding: .utf8) {
-            return content
+            addIfRoom("user", content)
         }
-        return "(no user memories stored)"
+
+        // 2. Today's journal
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let today = formatter.string(from: Date())
+        let todayJournal = memoriesDir.appendingPathComponent("journal/\(today).md")
+        if let content = try? String(contentsOf: todayJournal, encoding: .utf8) {
+            addIfRoom("journal/\(today)", content)
+        }
+
+        // 3. Yesterday's journal
+        if let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) {
+            let yesterdayStr = formatter.string(from: yesterday)
+            let yesterdayJournal = memoriesDir.appendingPathComponent("journal/\(yesterdayStr).md")
+            if let content = try? String(contentsOf: yesterdayJournal, encoding: .utf8) {
+                addIfRoom("journal/\(yesterdayStr)", content)
+            }
+        }
+
+        // 4. Other memory files (projects, people, etc.)
+        if let items = try? FileManager.default.contentsOfDirectory(at: memoriesDir, includingPropertiesForKeys: nil) {
+            for item in items {
+                let name = item.lastPathComponent
+                if name == "user" || name == "journal" { continue }  // already handled
+
+                var isDir: ObjCBool = false
+                FileManager.default.fileExists(atPath: item.path, isDirectory: &isDir)
+
+                if isDir.boolValue {
+                    // Read files in subdirectory (e.g., projects/, people/)
+                    if let subItems = try? FileManager.default.contentsOfDirectory(at: item, includingPropertiesForKeys: nil) {
+                        for subItem in subItems {
+                            if let content = try? String(contentsOf: subItem, encoding: .utf8) {
+                                addIfRoom("\(name)/\(subItem.lastPathComponent)", content)
+                            }
+                        }
+                    }
+                } else {
+                    if let content = try? String(contentsOf: item, encoding: .utf8) {
+                        addIfRoom(name, content)
+                    }
+                }
+            }
+        }
+
+        return parts.isEmpty ? "(no memories stored)" : parts.joined(separator: "\n\n")
     }
 
     // MARK: - Mind API Call

@@ -113,6 +113,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         systemEventMonitor?.start()
 
+        // Boot turn — let the mind orient itself on launch
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            let bootThought = ScheduledThought(
+                content: "You just came online. Orient yourself — check what happened since last time.",
+                source: .boot,
+                fireDate: Date()
+            )
+            self?.mind?.wake(with: [bootThought])
+        }
+
         // Notifications
         NotchNotificationManager.shared.requestPermission()
         NotificationCenter.default.addObserver(
@@ -289,12 +299,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    // Soul + Capability = system prompt
-    private let systemPrompt = """
+    // Soul + Capability = system prompt (computed so it picks up disk edits at runtime)
+    private var systemPrompt: String {
+        """
         \(NotchSoul.prompt)
 
         \(NotchCapability.conversation)
         """
+    }
 
     /// Detect queries that benefit from extended thinking
     private func queryNeedsThinking(_ query: String) -> Bool {
@@ -609,6 +621,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func clearMessages() {
+        // If there's conversation worth saving, let the mind journal it first
+        let hasConversation = messages.contains { $0.isFromUser }
+        if hasConversation {
+            let summary = messages.prefix(20).reversed().map { msg in
+                "\(msg.isFromUser ? "User" : "Notch"): \(msg.text)"
+            }.joined(separator: "\n")
+
+            let saveThought = ScheduledThought(
+                content: "Session being cleared. Conversation to save:\n\(summary)",
+                source: .sessionSave,
+                fireDate: Date()
+            )
+            mind?.wake(with: [saveThought])
+        }
+
         messages.removeAll()
         SessionStorage.shared.clear()
         inputWindow?.reloadMessages()
