@@ -1,0 +1,33 @@
+name: Notch
+options:
+  bundleIdPrefix: com.nishantjosh
+  deploymentTarget:
+    macOS: "13.0"
+
+targets:
+  Notch:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        type: group
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nishantjosh.notch
+        PRODUCT_NAME: Notch
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: 1
+        INFOPLIST_FILE: Notch/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Notch/Notch.entitlements
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "13.0"
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: ""
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+        Release:
+          CODE_SIGN_IDENTITY: ""
+    entitlements:
+      path: Notch/Notch.entitlements

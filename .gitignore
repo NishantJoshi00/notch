@@ -1,0 +1,12 @@
+# Build
+.build/
+build/
+DerivedData/
+
+# Xcode (generated from project.yml)
+Notch.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+
+# Other
+.DS_Store
